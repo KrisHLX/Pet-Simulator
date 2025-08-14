@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CATSPA</title>
+  <style>
+    body {
+      margin: 0;
+      background-color: #e7eaf0;
+      font-family: 'Comic Sans MS', cursive;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .main-container {
+      width: 420px;
+      border-radius: 18px;
+      background-color: #fff;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      border: 4px solid #e0c272;
+      position: relative;
+    }
+
+    .tab-header {
+      background-color: #f9d662;
+      border-top-left-radius: 14px;
+      border-top-right-radius: 14px;
+      padding: 10px;
+      font-weight: bold;
+      color: #5b4d29;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .tab-header::before {
+      content: "🐾";
+    }
+
+    .pet-frame {
+      background-color: #fdf8ee;
+      border: 3px solid #e0c272;
+      border-radius: 12px;
+      margin: 12px;
+      padding: 10px;
+      height: 320px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    canvas {
+      border-radius: 10px;
+    }
+
+    .status-box {
+      background-color: #fff;
+      border-top: 3px solid #e0c272;
+      border-radius: 0 0 14px 14px;
+      padding: 12px 16px;
+      font-size: 14px;
+      color: #5a4a2a;
+    }
+
+    .bar-wrapper {
+      margin: 6px 0;
+    }
+
+    .bar-bg {
+      width: 100%;
+      height: 10px;
+      background: #eee;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+
+    .bar {
+      height: 100%;
+      background: green;
+      transition: width 0.3s;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 8px;
+    }
+
+    .controls button {
+      font-size: 12px;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 6px;
+      background-color: #ffc75f;
+      color: #4b371c;
+      cursor: pointer;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+</head>
+<body>
+
+<div class="main-container">
+  <div class="tab-header">PET PAW</div>
+  <div class="pet-frame" id="game-container"></div>
+  <div class="status-box">
+    <div id="petMessage">I'm feeling great today!</div>
+    <div class="bar-wrapper">
+      <div><small>Hunger</small><div class="bar-bg"><div id="hungerBar" class="bar"></div></div></div>
+      <div><small>Happiness</small><div class="bar-bg"><div id="happinessBar" class="bar"></div></div></div>
+      <div><small>Energy</small><div class="bar-bg"><div id="energyBar" class="bar"></div></div></div>
+    </div>
+    <div class="controls">
+      <button onclick="feed()">Eat 🍗</button>
+      <button onclick="exercise()">Exercise 🏃</button>
+      <button onclick="sleep()">Sleep 💤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let hunger = 100, energy = 100, happiness = 100;
+  let pet, background, foodBowl, table;
+  let currentAction = 'idle';
+
+  const config = {
+    type: Phaser.AUTO,
+    width: 360,
+    height: 280,
+    parent: 'game-container',
+    physics: {
+      default: 'arcade',
+      arcade: { gravity: { y: 0 }, debug: false }
+    },
+    scene: { preload, create, update }
+  };
+
+  const game = new Phaser.Game(config);
+
+  function preload() {
+    this.load.image('bg_feed', 'assets/kitchenbg.jpg');
+    this.load.image('bg_exercise', 'assets/walkbg.jpg');
+    this.load.image('bg_sleep', 'assets/sleepbg.jpg');
+    this.load.image('foodBowl', 'assets/foodbowl.png');
+    this.load.image('table', 'assets/table.png');
+
+    for (let i = 0; i < 10; i++) {
+      this.load.image(`idle${i}`, `assets/idle/Idle (${i + 1}).png`);
+      this.load.image(`hurt${i}`, `assets/hurt/Hurt (${i + 1}).png`);
+      this.load.image(`walk${i}`, `assets/walk/Walk (${i + 1}).png`);
+      this.load.image(`fall${i}`, `assets/fall/Fall (${i + 1}).png`);
+    }
+  }
+
+  function create() {
+    background = this.add.image(180, 140, 'bg_feed').setDisplaySize(360, 280).setDepth(-1);
+    pet = this.add.sprite(180, 137, 'idle0').setScale(0.6);
+    table = this.add.image(180, 220, 'table').setScale(0.25).setDepth(0).setVisible(false);
+    foodBowl = this.add.image(180, 210, 'foodBowl').setScale(0.08).setDepth(1).setVisible(false);
+
+    ['idle', 'hurt', 'walk', 'fall'].forEach(state => createAnimation(this, state));
+    pet.play('idle');
+
+    this.time.addEvent({
+      delay: 200,
+      loop: true,
+      callback: () => {
+        if (currentAction !== 'sleep') {
+          hunger = Math.max(0, hunger - 0.1);
+          energy = Math.max(0, energy - 0.05);
+          happiness = Math.max(0, happiness - 0.08);
+        }
+        updateStatus();
+      }
+    });
+  }
+
+  function update() {
+    if (currentAction !== 'sleep') {
+      if ((hunger < 20 || energy < 20 || happiness < 20) && currentAction !== 'hurt') {
+        currentAction = 'hurt';
+        pet.play('hurt');
+      } else if (currentAction !== 'idle' && hunger > 30 && energy > 30 && happiness > 30) {
+        currentAction = 'idle';
+        pet.play('idle');
+      }
+    }
+  }
+
+  function createAnimation(scene, key) {
+    scene.anims.create({
+      key,
+      frames: Array.from({ length: 10 }, (_, i) => ({ key: `${key}${i}` })),
+      frameRate: 10,
+      repeat: -1
+    });
+  }
+
+  function updateStatus() {
+    const msg = document.getElementById('petMessage');
+    document.getElementById('hungerBar').style.width = hunger + '%';
+    document.getElementById('hungerBar').style.background = hunger < 20 ? 'red' : 'green';
+    document.getElementById('happinessBar').style.width = happiness + '%';
+    document.getElementById('happinessBar').style.background = happiness < 20 ? 'red' : 'green';
+    document.getElementById('energyBar').style.width = energy + '%';
+    document.getElementById('energyBar').style.background = energy < 20 ? 'red' : 'green';
+
+    if (currentAction === 'sleep') msg.innerText = "I'm sleeping now, don't disturb me 💤";
+    else if (hunger < 20) msg.innerText = "I'm hungry... 🍗";
+    else if (energy < 20) msg.innerText = "I need sleep... 💤";
+    else if (happiness < 20) msg.innerText = "I'm bored... 😿";
+    else msg.innerText = "I'm feeling great today! 😸";
+  }
+
+  function switchBackground(scene, key) {
+    if (background) background.destroy();
+    background = scene.add.image(180, 140, key).setDisplaySize(360, 280).setDepth(-1);
+  }
+
+  function returnToIdle(scene) {
+    currentAction = 'idle';
+    pet.play('fall');
+    setTimeout(() => pet.play('idle'), 800);
+    pet.setVisible(true);
+    foodBowl.setVisible(false);
+    table.setVisible(false);
+  }
+
+  window.feed = function () {
+    const scene = game.scene.scenes[0];
+    if (currentAction === 'feed') return;
+    if (currentAction === 'sleep') returnToIdle(scene);
+    currentAction = 'feed';
+    switchBackground(scene, 'bg_feed');
+    foodBowl.setVisible(true);
+    table.setVisible(true);
+    pet.play('fall');
+
+    scene.tweens.add({
+      targets: foodBowl,
+      y: 185,
+      duration: 800,
+      yoyo: true,
+      onComplete: () => {
+        hunger = Math.min(100, hunger + 30);
+        returnToIdle(scene);
+      }
+    });
+  };
+
+  window.exercise = function () {
+    const scene = game.scene.scenes[0];
+    if (currentAction === 'exercise') return;
+    if (currentAction === 'sleep') returnToIdle(scene);
+    currentAction = 'exercise';
+    switchBackground(scene, 'bg_exercise');
+    foodBowl.setVisible(false);
+    table.setVisible(false);
+    pet.play('walk');
+
+    scene.tweens.add({
+      targets: pet,
+      x: 300,
+      duration: 800,
+      yoyo: true,
+      onComplete: () => {
+        happiness = Math.min(100, happiness + 30);
+        pet.x = 180;
+        returnToIdle(scene);
+      }
+    });
+  };
+
+  window.sleep = function () {
+    if (currentAction === 'sleep') return;
+    currentAction = 'sleep';
+    const scene = game.scene.scenes[0];
+    switchBackground(scene, 'bg_sleep');
+    pet.setVisible(false);
+    foodBowl.setVisible(false);
+    table.setVisible(false);
+    setTimeout(() => energy = Math.min(100, energy + 40), 2500);
+  };
+</script>
+
+</body>
+</html>
